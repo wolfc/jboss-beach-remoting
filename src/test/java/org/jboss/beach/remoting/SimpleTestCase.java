@@ -45,10 +45,6 @@ import org.xnio.Xnio;
 import org.xnio.channels.AcceptingChannel;
 import org.xnio.channels.ConnectedStreamChannel;
 
-import javax.security.auth.callback.Callback;
-import javax.security.auth.callback.CallbackHandler;
-import javax.security.auth.callback.NameCallback;
-import javax.security.auth.callback.UnsupportedCallbackException;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -56,16 +52,14 @@ import java.net.SocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.security.Security;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.jboss.beach.remoting.IoFutureHelper.future;
 import static org.junit.Assert.assertTrue;
 import static org.xnio.Options.SASL_POLICY_NOANONYMOUS;
 
@@ -73,64 +67,6 @@ import static org.xnio.Options.SASL_POLICY_NOANONYMOUS;
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
  */
 public class SimpleTestCase {
-    private static final class AnonymousCallbackHandler implements CallbackHandler {
-        public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
-            for (Callback current : callbacks) {
-                if (current instanceof NameCallback) {
-                    final NameCallback ncb = (NameCallback) current;
-                    ncb.setName("anonymous");
-                } else {
-                    throw new UnsupportedCallbackException(current);
-                }
-            }
-        }
-    }
-
-    private static <V> Future<V> future(final IoFuture<V> ioFuture) {
-        return new Future<V>() {
-            @Override
-            public boolean cancel(boolean mayInterruptIfRunning) {
-                return ioFuture.cancel().getStatus() == IoFuture.Status.CANCELLED;
-            }
-
-            @Override
-            public boolean isCancelled() {
-                return ioFuture.getStatus() == IoFuture.Status.CANCELLED;
-            }
-
-            @Override
-            public boolean isDone() {
-                return ioFuture.getStatus() == IoFuture.Status.DONE;
-            }
-
-            @Override
-            public V get() throws InterruptedException, ExecutionException {
-                final IoFuture.Status status = ioFuture.awaitInterruptibly();
-                return result(status);
-            }
-
-            @Override
-            public V get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-                final IoFuture.Status status = ioFuture.awaitInterruptibly(timeout, unit);
-                return result(status);
-            }
-
-            private V result(final IoFuture.Status status) throws ExecutionException {
-                switch (status) {
-                    case CANCELLED:
-                        throw new CancellationException();
-                    case FAILED:
-                        throw new ExecutionException(ioFuture.getException());
-                }
-                try {
-                    return ioFuture.get();
-                } catch (IOException e) {
-                    throw new ExecutionException(e);
-                }
-            }
-        };
-    }
-
     @Test
     public void test1() throws IOException, URISyntaxException, ExecutionException, TimeoutException, InterruptedException {
         Security.addProvider(new JBossSaslProvider());
